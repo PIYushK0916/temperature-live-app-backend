@@ -3,11 +3,11 @@
  * Real-time temperature monitoring with WebSocket updates
  */
 
+import cors from 'cors';
 import express from 'express';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
 import path from 'path';
+import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { initFileWatcher } from './fileWatcher.js';
 
@@ -100,15 +100,43 @@ app.get('/api/temperatures', async (req, res) => {
 });
 
 // Socket.IO connection handling
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log('🔌 Client connected:', socket.id);
+  
+  // Send initial data immediately on connection
+  try {
+    const fs = await import('fs/promises');
+    const { parseTemperatureFile } = await import('./utils/temperatureParser.js');
+    
+    const content = await fs.readFile(TEMPERATURE_FILE, 'utf-8');
+    const temperatures = parseTemperatureFile(content);
+    
+    socket.emit('temperatures-update', temperatures);
+    console.log(`📊 Sent initial data to client: ${temperatures.length} entries`);
+  } catch (error) {
+    console.error('Error sending initial data:', error);
+    socket.emit('temperatures-update', []);
+  }
   
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
   });
   
-  socket.on('request-data', () => {
-    console.log('📊 Client requested initial data');
+  socket.on('request-data', async () => {
+    console.log('📊 Client requested data');
+    try {
+      const fs = await import('fs/promises');
+      const { parseTemperatureFile } = await import('./utils/temperatureParser.js');
+      
+      const content = await fs.readFile(TEMPERATURE_FILE, 'utf-8');
+      const temperatures = parseTemperatureFile(content);
+      
+      socket.emit('temperatures-update', temperatures);
+      console.log(`📊 Sent data to client: ${temperatures.length} entries`);
+    } catch (error) {
+      console.error('Error sending data:', error);
+      socket.emit('temperatures-update', []);
+    }
   });
 });
 
